@@ -18,9 +18,7 @@ describe('useAppearance', () => {
         document.cookie = `appearance=${value};path=/`;
     };
 
-
     beforeEach(() => {
-
         localStorage.clear();
 
         document.cookie = 'appearance=; Max-Age=0; path=/';

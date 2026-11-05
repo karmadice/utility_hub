@@ -8,38 +8,37 @@ test('it defaults to system appearance when cookie is missing', function () {
     expect(View::shared('appearance'))->toBe('system');
 });
 
-
 test('it accepts light appearance from cookie', function () {
     $this->withUnencryptedCookie('appearance', 'light')->get('/')->assertOk();
 
-    expect(\Illuminate\Support\Facades\View::shared('appearance'))
+    expect(View::shared('appearance'))
         ->toBe('light');
 });
 
 test('it accepts dark appearance from cookie', function () {
     $this->withUnencryptedCookie('appearance', 'dark')->get('/')->assertOk();
 
-    expect(\Illuminate\Support\Facades\View::shared('appearance'))
+    expect(View::shared('appearance'))
         ->toBe('dark');
 });
 
 test('it accepts system appearance from cookie', function () {
     $this->withUnencryptedCookie('appearance', 'system')->get('/')->assertOk();
 
-    expect(\Illuminate\Support\Facades\View::shared('appearance'))
+    expect(View::shared('appearance'))
         ->toBe('system');
 });
 
 test('it defaults to system appearance for an invalid cookie', function () {
     $this->withUnencryptedCookie('appearance', 'invalid')->get('/')->assertOk();
 
-    expect(\Illuminate\Support\Facades\View::shared('appearance'))
+    expect(View::shared('appearance'))
         ->toBe('system');
 });
 
 test('it defaults to system appearance for an empty cookie', function () {
     $this->withUnencryptedCookie('appearance', '')->get('/')->assertOk();
 
-    expect(\Illuminate\Support\Facades\View::shared('appearance'))
+    expect(View::shared('appearance'))
         ->toBe('system');
 });
