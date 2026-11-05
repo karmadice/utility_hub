@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 
 export type ResolvedAppearance = 'light' | 'dark';
 export type Appearance = ResolvedAppearance | 'system';
@@ -9,8 +9,15 @@ export type UseAppearanceReturn = {
     readonly updateAppearance: (mode: Appearance) => void;
 };
 
+type AppearanceSnapshot = {
+    appearance: Appearance;
+    resolvedAppearance: ResolvedAppearance;
+};
+
 const listeners = new Set<() => void>();
+
 let currentAppearance: Appearance = 'system';
+let systemMediaQuery: MediaQueryList | null = null;
 
 const prefersDark = (): boolean => {
     if (typeof window === 'undefined') {
@@ -26,90 +33,127 @@ const setCookie = (name: string, value: string, days = 365): void => {
     }
 
     const maxAge = days * 24 * 60 * 60;
+
     document.cookie = `${name}=${value};path=/;max-age=${maxAge};SameSite=Lax`;
 };
 
-const getStoredAppearance = (): Appearance => {
-    if (typeof window === 'undefined') {
-        return 'system';
+const getCookie = (name: string): string | null => {
+    if (typeof document === 'undefined') {
+        return null;
     }
 
-    return (localStorage.getItem('appearance') as Appearance) || 'system';
+    const cookie = document.cookie
+        .split(';')
+        .map((item) => item.trim())
+        .find((item) => item.startsWith(`${name}=`));
+
+    if (!cookie) {
+        return null;
+    }
+
+    try {
+        return decodeURIComponent(cookie.substring(name.length + 1));
+    } catch {
+        return null;
+    }
 };
 
-const isDarkMode = (appearance: Appearance): boolean => {
-    return appearance === 'dark' || (appearance === 'system' && prefersDark());
+const getStoredAppearance = (): Appearance => {
+    const stored = getCookie('appearance');
+
+    if (stored === 'light' || stored === 'dark' || stored === 'system') {
+        return stored;
+    }
+
+    return 'system';
 };
+
+const resolveAppearance = (appearance: Appearance): ResolvedAppearance => {
+    if (appearance === 'system') {
+        return prefersDark() ? 'dark' : 'light';
+    }
+
+    return appearance;
+};
+
+const getSnapshot = (): AppearanceSnapshot => ({
+    appearance: currentAppearance,
+    resolvedAppearance: resolveAppearance(currentAppearance),
+});
 
 const applyTheme = (appearance: Appearance): void => {
     if (typeof document === 'undefined') {
         return;
     }
 
-    const isDark = isDarkMode(appearance);
+    const isDark = resolveAppearance(appearance) === 'dark';
 
     document.documentElement.classList.toggle('dark', isDark);
     document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
 };
 
-const subscribe = (callback: () => void) => {
-    listeners.add(callback);
-
-    return () => listeners.delete(callback);
+const notify = (): void => {
+    listeners.forEach((listener) => listener());
 };
 
-const notify = (): void => listeners.forEach((listener) => listener());
+const subscribe = (listener: () => void): (() => void) => {
+    listeners.add(listener);
 
-const mediaQuery = (): MediaQueryList | null => {
-    if (typeof window === 'undefined') {
-        return null;
-    }
-
-    return window.matchMedia('(prefers-color-scheme: dark)');
+    return () => {
+        listeners.delete(listener);
+    };
 };
 
-const handleSystemThemeChange = (): void => applyTheme(currentAppearance);
+const handleSystemThemeChange = (): void => {
+    applyTheme(currentAppearance);
+    notify();
+};
 
 export function initializeTheme(): void {
     if (typeof window === 'undefined') {
         return;
     }
 
-    if (!localStorage.getItem('appearance')) {
-        localStorage.setItem('appearance', 'system');
-        setCookie('appearance', 'system');
-    }
-
     currentAppearance = getStoredAppearance();
+
     applyTheme(currentAppearance);
 
-    // Set up system theme change listener
-    mediaQuery()?.addEventListener('change', handleSystemThemeChange);
+    systemMediaQuery?.removeEventListener('change', handleSystemThemeChange);
+
+    systemMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+    systemMediaQuery.addEventListener('change', handleSystemThemeChange);
+
+    notify();
 }
 
 export function useAppearance(): UseAppearanceReturn {
-    const appearance: Appearance = useSyncExternalStore(
-        subscribe,
-        () => currentAppearance,
-        () => 'system',
-    );
+    const [snapshot, setSnapshot] = useState<AppearanceSnapshot>(getSnapshot);
 
-    const resolvedAppearance: ResolvedAppearance = isDarkMode(appearance)
-        ? 'dark'
-        : 'light';
+    useEffect(() => {
+        const syncAppearance = (): void => {
+            setSnapshot(getSnapshot());
+        };
+
+        const unsubscribe = subscribe(syncAppearance);
+
+        syncAppearance();
+
+        return unsubscribe;
+    }, []);
 
     const updateAppearance = (mode: Appearance): void => {
         currentAppearance = mode;
 
-        // Store in localStorage for client-side persistence...
-        localStorage.setItem('appearance', mode);
-
-        // Store in cookie for SSR...
         setCookie('appearance', mode);
 
         applyTheme(mode);
         notify();
     };
 
-    return { appearance, resolvedAppearance, updateAppearance } as const;
+    return {
+        appearance: snapshot.appearance,
+        resolvedAppearance: snapshot.resolvedAppearance,
+        updateAppearance,
+    };
 }
